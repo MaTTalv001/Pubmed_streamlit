@@ -5,8 +5,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./src:/app/src
-      - ./data:/app/data
+      - .:/app
     environment:
       - ENV_FILE=.env
     command: streamlit run src/main.py
