@@ -25,8 +25,8 @@ def initialize_bedrock():
     )
     return llm
 
-def generate_introduction(llm, articles_df):
-    combined_text = "以下の論文を先行研究として、研究イントロダクション（背景）のドラフトを作成してください：\n\n"
+def generate_introduction(llm, articles_df, add_text=""):
+    combined_text = "以下の論文を先行研究とし、研究イントロダクション（背景）のドラフトを作成してください：\n\n"
     
     for _, row in articles_df.iterrows():
         combined_text += f"論文タイトル: {row['Title']}\n"
@@ -35,29 +35,25 @@ def generate_introduction(llm, articles_df):
     
     prompt = f"""{combined_text}
 
-イントロダクション作成の要件：
+#イントロダクション作成の要件：
 
-1. 構成
-- 一般的な内容から具体的なトピックへの論理的な展開
-- 研究分野の重要性と社会的意義の説明
-- 現在までの研究動向と課題の整理
-- 新規研究の必要性と意義の提示
+## 全体像と導入  
+イントロ冒頭では、まず研究分野の全体像と学術的・社会的背景を手短に示す。読者がテーマの意義を瞬時に理解できるよう、背景と目的を簡潔に提示し、「なぜこのトピックが重要なのか」を明確に打ち出すことが重要。研究動向を大まかに触れることで、その後の展開にも自然に誘導する。
 
-2. 先行研究の引用方法
-- 研究の文脈に沿った有機的な構成
-- 複数の研究結果の統合的な提示
-- 対立する見解がある場合の公平な提示
-- 最新の研究動向の反映
+## 研究分野の重要性と先行研究の整理 
+研究分野の重要性を社会的・産業的観点などから掘り下げ、これまで先行研究がどのような課題に取り組み、どんな成果を出してきたかを要約する。政策との関連や実用的インパクトを示すことで、読者の関心を引きつける。さらに、先行研究の到達点と未解決の問題を指摘し、本研究の必要性を強調する。
 
-3. 表現上の注意点
-- 建設的な表現の使用
-- 論理的な文章展開
-- 明確な課題提起
-- 学術的な文体の維持
+## 先行研究の引用と構成 
+先行研究の引用は、ただ成果を並べるのではなく、それぞれの関係性や流れを示すことが重要。複数の文献を比較し、自身の研究との接点を示すことで、読者に本研究の位置づけを明確に伝える。最新の研究動向を盛り込むことで、研究の時宜性もアピール可能。引用スタイルは所定の形式を守り、論理的な文脈を意識する。
 
-出力形式：
-- 段落分けされた文章形式（約1000字）
-- 各段落の冒頭に簡単な説明コメント
+## 対立する見解と最新研究への配慮
+見解が対立する研究がある場合は、どのような根拠や方法論が異なるかを公正に提示する。そのうえで、本研究がその対立をどう整理・解決し、どの立場をとるかを明示する。単なる批判に終わらず、多角的な視点を受け入れる姿勢を示すことで、学問的信頼性と説得力を高める。
+
+## 第五段落：研究課題と結論への導き  
+イントロの締めくくりでは、本研究の目的と課題を明確に打ち出し、先行研究とのギャップや新規性を簡潔に示す。研究手法や期待される効果にも軽く触れ、読者が論文全体の方向性を把握できるようにする。こうした締めによって、研究の学術的価値や社会的意義を提示し、本論文の説得力を高める。
+
+# 先行研究の内容に加えユーザーが付け加えたいことことがある場合はそれを加味する
+ユーザーが付け加えたいこと：{add_text} (空欄の場合は無視)
 """
 
     response = llm.predict(prompt)
@@ -99,7 +95,7 @@ def fetch_pubmed_articles(pmids, email):
     return pd.DataFrame(articles_data)
 
 def main():
-    st.title("研究イントロダクション作成支援ツール")
+    st.title("研究イントロ作成支援")
     st.markdown("PubMed論文を基に研究背景のドラフトを生成します")
     
     try:
@@ -110,13 +106,20 @@ def main():
     
     with st.container():
         st.markdown("### 基本情報入力")
+        st.write("NCBIのガイドラインに基づき、使用の際にはメールアドレスが必要です")
         email = st.text_input("メールアドレス:")
         
         st.markdown("### 文献番号（PMID）入力")
-        st.markdown("※最大3件まで入力可能です")
-        pmid1 = st.text_input("PMID 1:")
-        pmid2 = st.text_input("PMID 2 (任意):")
-        pmid3 = st.text_input("PMID 3 (任意):")
+        st.markdown("※入力後Enterで確定してください(最大3件まで)")
+        
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            pmid1 = st.text_input("PMID 1:")
+        with col2:
+            pmid2 = st.text_input("PMID 2 (任意):")
+        with col3:
+            pmid3 = st.text_input("PMID 3 (任意):")
     
     # PMIDタグの表示
     if pmid1 or pmid2 or pmid3:
@@ -144,7 +147,9 @@ def main():
             cols[1].markdown(f'<div class="pmid-tag">{pmid2}</div>', unsafe_allow_html=True)
         if pmid3:
             cols[2].markdown(f'<div class="pmid-tag">{pmid3}</div>', unsafe_allow_html=True)
-
+    add_txt = st.text_area("先行研究に加え、イントロを書く上で踏まえたい事項があれば記入してください（任意）")
+    
+    st.markdown("***")
     if st.button("イントロダクションを生成"):
         if not email or not is_valid_email(email):
             st.error("有効なメールアドレスを入力してください。")
@@ -165,7 +170,7 @@ def main():
                 
                 with st.spinner('イントロダクションを作成中...'):
                     try:
-                        intro = generate_introduction(llm, df)
+                        intro = generate_introduction(llm, df, add_txt)
                         st.subheader("生成されたイントロダクション案")
                         st.markdown(intro)
                     except Exception as e:
