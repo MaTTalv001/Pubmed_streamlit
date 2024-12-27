@@ -2,6 +2,7 @@ import streamlit as st
 import boto3
 from langchain_community.chat_models import BedrockChat
 import os
+import time
 
 def initialize_bedrock():
     required_env_vars = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_DEFAULT_REGION']
@@ -101,6 +102,8 @@ def main():
         st.session_state.conversation_history = []
     if 'comment_submitted' not in st.session_state:
         st.session_state.comment_submitted = False
+    if 'displayed_messages' not in st.session_state:
+        st.session_state.displayed_messages = []
 
     try:
         llm = initialize_bedrock()
@@ -134,6 +137,7 @@ def main():
         st.session_state.query = query
         st.session_state.selected_types = selected_types
         st.session_state.responses = {}
+        st.session_state.displayed_messages = []  # ディスカッション表示をリセット
         
         for i, mbti_type in enumerate(selected_types):
             with response_cols[i]:
@@ -155,7 +159,7 @@ def main():
                         st.write(st.session_state.responses[mbti_type])
 
     if len(selected_types) >= 2 and bool(st.session_state.responses):
-        col1, col2 = st.columns([1, 4])  # カラムを作成してボタンを左側に配置
+        col1, col2 = st.columns([1, 4])
         
         with col1:
             if st.button("ディスカッションを生成"):
@@ -165,15 +169,14 @@ def main():
                         st.session_state.discussion_messages = messages
                         st.session_state.discussion_summary = summary
                         st.session_state.discussion_generated = True
+                        st.session_state.displayed_messages = []  # 表示済みメッセージをリセット
                     except Exception as e:
                         st.error(f"議論生成エラー: {str(e)}")
         
-        # ディスカッションが生成されている場合は常に表示
         with col2:
             if st.session_state.discussion_generated:
                 st.markdown("**ディスカッションが生成されました**")
         
-        # ディスカッションの内容表示（ボタンの下に配置）
         if st.session_state.discussion_generated:
             st.subheader("性格タイプ間の議論")
             
@@ -181,53 +184,44 @@ def main():
             st.markdown("**元の相談内容：**")
             st.info(st.session_state.query)
             
-            # 最初のディスカッションを表示
-            for message in st.session_state.discussion_messages:
-                parts = message.split(':', 1)
-                if len(parts) == 2:
-                    speaker, content = parts
-                    speaker = speaker.strip()
-                    content = content.strip()
-                    
-                    speaker_type = speaker.split('（')[0]
-                    speaker_name = MBTI_TYPES[speaker_type]['name']
-                    
-                    is_user = speaker_type == selected_types[0]
-                    
-                    with st.chat_message("user" if is_user else "assistant"):
-                        st.markdown(f"**{speaker_type}（{speaker_name}）**")
-                        st.write(content)
+            # メッセージを表示するための空のコンテナを作成
+            message_container = st.empty()
             
-            # 最初のディスカッションを表示
-            for message in st.session_state.discussion_messages:
-                parts = message.split(':', 1)
-                if len(parts) == 2:
-                    speaker, content = parts
-                    speaker = speaker.strip()
-                    content = content.strip()
-                    
-                    # MBTI型の取得方法を修正
-                    speaker_parts = speaker.split('（')
-                    speaker_type = speaker_parts[0].strip()  # 括弧の前の部分（MBTI型）を取得
-                    
-                    try:
-                        speaker_name = MBTI_TYPES[speaker_type]['name']
-                    except KeyError:
-                        st.error(f"未知の性格タイプ: {speaker_type}")
-                        speaker_name = "不明"
-                    
-                    is_user = speaker_type == selected_types[0]
-                    
-                    with st.chat_message("user" if is_user else "assistant"):
-                        st.markdown(f"**{speaker_type}（{speaker_name}）**")
-                        st.write(content)
+            # 新しいメッセージがある場合のみ表示を更新
+            for i, message in enumerate(st.session_state.discussion_messages):
+                if i >= len(st.session_state.displayed_messages):
+                    parts = message.split(':', 1)
+                    if len(parts) == 2:
+                        speaker, content = parts
+                        speaker = speaker.strip()
+                        content = content.strip()
+                        
+                        speaker_type = speaker.split('（')[0]
+                        try:
+                            speaker_name = MBTI_TYPES[speaker_type]['name']
+                        except KeyError:
+                            st.error(f"未知の性格タイプ: {speaker_type}")
+                            speaker_name = "不明"
+                        
+                        is_user = speaker_type == selected_types[0]
+                        
+                        with st.chat_message("user" if is_user else "assistant"):
+                            st.markdown(f"**{speaker_type}（{speaker_name}）**")
+                            st.write(content)
+                        
+                        # 表示済みメッセージとして記録
+                        st.session_state.displayed_messages.append(message)
+                        
+                        # 少し待機して次のメッセージを表示
+                        time.sleep(1)
             
-            # 保存された会話履歴を表示
+            # 会話履歴を表示
             for history_item in st.session_state.conversation_history:
                 if history_item['type'] == 'user':
                     with st.chat_message("user"):
                         st.markdown("**あなた**")
                         st.write(history_item['content'])
+                        time.sleep(0.8)
                 else:
                     with st.chat_message("assistant"):
                         speaker_type = history_item['speaker']
@@ -238,6 +232,7 @@ def main():
                             speaker_name = "不明"
                         st.markdown(f"**{speaker_type}（{speaker_name}）**")
                         st.write(history_item['content'])
+                        time.sleep(0.8)
             
             # まとめの表示
             if st.session_state.discussion_summary:
@@ -245,11 +240,9 @@ def main():
                 st.markdown("### 議論のまとめ")
                 st.info(st.session_state.discussion_summary)
             
-            # コメント入力部分を最後に配置
-            # コメント入力部分を最後に配置
+            # コメント入力部分
             st.markdown("---")
             
-            # コメント送信後に入力欄をクリアするためのキー管理
             if 'comment_key' not in st.session_state:
                 st.session_state.comment_key = 0
             
@@ -263,13 +256,12 @@ def main():
                 if st.button("コメントを送信"):
                     if new_comment and not st.session_state.comment_submitted:
                         st.session_state.comment_submitted = True
-                        # ユーザーのコメントを会話履歴に追加
+                        
                         st.session_state.conversation_history.append({
                             'type': 'user',
                             'content': new_comment
                         })
                         
-                        # 選択された性格タイプからの応答を生成
                         with st.spinner("返信を生成中..."):
                             for mbti_type in selected_types:
                                 response_prompt = f"""元の相談内容と、これまでの議論を踏まえて回答してください。
@@ -298,16 +290,13 @@ def main():
                                 except Exception as e:
                                     st.error(f"応答生成エラー ({mbti_type}): {str(e)}")
                         
-                        # 入力欄をクリアするためにキーを更新
                         st.session_state.comment_key += 1
-                        # 画面を更新
                         st.rerun()
             
             with col2:
                 if st.session_state.comment_submitted:
                     st.success("コメントが送信され、返信が生成されました")
 
-            # 送信状態をリセット
             if st.session_state.comment_submitted:
                 st.session_state.comment_submitted = False
 
